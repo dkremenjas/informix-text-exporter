@@ -1,3 +1,4 @@
 data
 *.prom
 config.yml*
+.*.lock
