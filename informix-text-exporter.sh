@@ -1,9 +1,11 @@
 #!/bin/bash
 
-if [ $# -ne 1 ]
+source /etc/default/node_exporter
+
+if [ $# -ne 2 ]
 then
 	echo "
-Usage: $0 frequency
+Usage: $0 instance frequency
 
 Frequency is an integer number showing the number of times per hour to execute a query or queries.
 Valid values are: 1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30 and 60. Any other value will be ignored.
@@ -11,7 +13,8 @@ Valid values are: 1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30 and 60. Any other value w
 	exit 1
 fi
 
-frq=$1
+instance=$1
+frq=$2
 
 starttime=$( date +%s )
 
@@ -21,14 +24,14 @@ case $frq in
 			;;
 	*)
 		echo "Invalid frequency: $frq"
-		rm "${frq}.lock" 2> /dev/null
+		rm ".${instance}.${frq}.lock" 2> /dev/null
 		exit 2
 			;;
 esac
 
-textfile_path=$( jq '.[] | .textfile_path' < config.json 2> /dev/null | tr -d \" )
+textfile_path=$( jq '.[] | .textfile_path' < ${INFORMIX_EXPORTER_PATH}/config.json 2> /dev/null | tr -d \" )
 
-nummetrics=$( jq '. | length' < metrics.json 2> /dev/null )
+nummetrics=$( jq '. | length' < ${INFORMIX_EXPORTER_PATH}/metrics.json 2> /dev/null )
 cnt=0
 
 ls -l static_labels > /dev/null 2>&1
@@ -44,16 +47,16 @@ cat /dev/null > "/tmp/informix-text-exporter.$frq.$$"
 while [ "$cnt" -lt "$nummetrics" ]
 do
 	commas=0
-	frequency=$( jq --argjson cnt "$cnt" '.[$cnt] | .frequency' < metrics.json 2> /dev/null | tr -d \" )
+	frequency=$( jq --argjson cnt "$cnt" '.[$cnt] | .frequency' < ${INFORMIX_EXPORTER_PATH}/metrics.json 2> /dev/null | tr -d \" )
 
 	if [ "$frequency" -eq "$frq" ]
 	then
 
-		metricname=$( jq --argjson cnt "$cnt" '.[$cnt] | .metricname' < metrics.json 2> /dev/null | tr -d \" )
-		help=$( jq --argjson cnt "$cnt" '.[$cnt] | .help' < metrics.json 2> /dev/null | tr -d \" )
-		type=$( jq --argjson cnt "$cnt" '.[$cnt] | .type' < metrics.json 2> /dev/null | tr -d \" )
-		database=$( jq --argjson cnt "$cnt" '.[$cnt] | .database' < metrics.json 2> /dev/null | tr -d \" )
-		sql=$( jq --argjson cnt "$cnt" '.[$cnt] | .sql' < metrics.json 2> /dev/null | tr -d \" )
+		metricname=$( jq --argjson cnt "$cnt" '.[$cnt] | .metricname' < ${INFORMIX_EXPORTER_PATH}/metrics.json 2> /dev/null | tr -d \" )
+		help=$( jq --argjson cnt "$cnt" '.[$cnt] | .help' < ${INFORMIX_EXPORTER_PATH}/metrics.json 2> /dev/null | tr -d \" )
+		type=$( jq --argjson cnt "$cnt" '.[$cnt] | .type' < ${INFORMIX_EXPORTER_PATH}/metrics.json 2> /dev/null | tr -d \" )
+		database=$( jq --argjson cnt "$cnt" '.[$cnt] | .database' < ${INFORMIX_EXPORTER_PATH}/metrics.json 2> /dev/null | tr -d \" )
+		sql=$( jq --argjson cnt "$cnt" '.[$cnt] | .sql' < ${INFORMIX_EXPORTER_PATH}/metrics.json 2> /dev/null | tr -d \" )
 
 		echo "# HELP $metricname $help" >> "/tmp/informix-text-exporter.$frq.$$"
 		echo "# TYPE $metricname $type" >> "/tmp/informix-text-exporter.$frq.$$"
@@ -93,7 +96,7 @@ do
 
 		sql=$origsql
 
-		dbaccess "$database" <<! 2> /dev/null | grep -v "^$"
+		${INFORMIXDIR}/bin/dbaccess "$database" <<! 2> /dev/null | grep -v "^$"
 UNLOAD TO /tmp/informix-text-exporter.tmp.$frq.$$
 $sql
 !
@@ -154,13 +157,13 @@ echo "informix_exporter_duration{$statics,frequency=$frq\"} $dur" >> "/tmp/infor
 sed -i -e 's/,/",/g' "/tmp/informix-text-exporter.$frq.$$"
 sed -i -e 's/=/="/g' "/tmp/informix-text-exporter.$frq.$$"
 
-if promtool check metrics < "/tmp/informix-text-exporter.$frq.$$" > /tmp/metrics.lint.err 2>&1
-then
-	:
-else
-	echo "Prometheus linting error(s). Check /tmp/metrics.lint.err for details"
-fi	
+#if promtool check metrics < "/tmp/informix-text-exporter.$frq.$$" > /tmp/metrics.lint.err 2>&1
+#then
+#	:
+#else
+#	echo "Prometheus linting error(s). Check /tmp/metrics.lint.err for details"
+#fi	
 
 mv "/tmp/informix-text-exporter.$frq.$$" "$textfile_path/informix-text-exporter.$frq.prom"
-rm "${frq}.lock" 2> /dev/null
+rm ".${instance}.${frq}.lock" 2> /dev/null
 exit 0
