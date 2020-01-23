@@ -1,17 +1,19 @@
 #!/bin/bash
 
+#set -x
+
 source /etc/default/node_exporter
 
-nummetrics=$( jq '. | length' < ${INFORMIX_EXPORTER_PATH}/metrics.json )
+nummetrics=$( /bin/jq '. | length' < ${INFORMIX_EXPORTER_PATH}/metrics.json )
 mins=$( date +%M )
 cnt=0
 
 while IFS=',' read -ra INSTANCES; do
       for instance in "${INSTANCES[@]}"; do
-            source /etc/informix/${instance}.env
+            #source /etc/informix/${instance}.env
 	    while [ "$cnt" -lt "$nummetrics" ]
                 do
-        		frequency=$( jq --argjson cnt "$cnt" '.[$cnt] | .frequency' < ${INFORMIX_EXPORTER_PATH}/metrics.json | tr -d \" )
+        		frequency=$( /bin/jq --argjson cnt "$cnt" '.[$cnt] | .frequency' < ${INFORMIX_EXPORTER_PATH}/metrics.json | tr -d \" )
         		isnow=$(( mins % ( 60 / frequency ) ))
         
         		if [ "$isnow" -eq 0 ]
@@ -27,5 +29,6 @@ while IFS=',' read -ra INSTANCES; do
         
         		cnt=$(( cnt + 1 ))
             done
+            rm ".${instance}.${frequency}.lock"
       done
 done <<< "${INFORMIX_EXPORTER_INSTANCES}"

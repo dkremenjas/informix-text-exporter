@@ -16,6 +16,8 @@ fi
 instance=$1
 frq=$2
 
+source /etc/informix/${instance}.env
+
 starttime=$( date +%s )
 
 case $frq in
@@ -29,9 +31,9 @@ case $frq in
 			;;
 esac
 
-textfile_path=$( jq '.[] | .textfile_path' < ${INFORMIX_EXPORTER_PATH}/config.json 2> /dev/null | tr -d \" )
+textfile_path=$( /bin/jq '.[] | .textfile_path' < ${INFORMIX_EXPORTER_PATH}/config.json 2> /dev/null | tr -d \" )
 
-nummetrics=$( jq '. | length' < ${INFORMIX_EXPORTER_PATH}/metrics.json 2> /dev/null )
+nummetrics=$( /bin/jq '. | length' < ${INFORMIX_EXPORTER_PATH}/metrics.json 2> /dev/null )
 cnt=0
 
 ls -l static_labels > /dev/null 2>&1
@@ -39,7 +41,7 @@ sl_exists=$?
 
 if [ $sl_exists -eq 0 ]
 then
-	statics=$( cat static_labels )
+	statics=$( /bin/cat static_labels )
 fi
 
 cat /dev/null > "/tmp/informix-text-exporter.$frq.$$"
@@ -47,16 +49,16 @@ cat /dev/null > "/tmp/informix-text-exporter.$frq.$$"
 while [ "$cnt" -lt "$nummetrics" ]
 do
 	commas=0
-	frequency=$( jq --argjson cnt "$cnt" '.[$cnt] | .frequency' < ${INFORMIX_EXPORTER_PATH}/metrics.json 2> /dev/null | tr -d \" )
+	frequency=$( /bin/jq --argjson cnt "$cnt" '.[$cnt] | .frequency' < ${INFORMIX_EXPORTER_PATH}/metrics.json 2> /dev/null | tr -d \" )
 
 	if [ "$frequency" -eq "$frq" ]
 	then
 
-		metricname=$( jq --argjson cnt "$cnt" '.[$cnt] | .metricname' < ${INFORMIX_EXPORTER_PATH}/metrics.json 2> /dev/null | tr -d \" )
-		help=$( jq --argjson cnt "$cnt" '.[$cnt] | .help' < ${INFORMIX_EXPORTER_PATH}/metrics.json 2> /dev/null | tr -d \" )
-		type=$( jq --argjson cnt "$cnt" '.[$cnt] | .type' < ${INFORMIX_EXPORTER_PATH}/metrics.json 2> /dev/null | tr -d \" )
-		database=$( jq --argjson cnt "$cnt" '.[$cnt] | .database' < ${INFORMIX_EXPORTER_PATH}/metrics.json 2> /dev/null | tr -d \" )
-		sql=$( jq --argjson cnt "$cnt" '.[$cnt] | .sql' < ${INFORMIX_EXPORTER_PATH}/metrics.json 2> /dev/null | tr -d \" )
+		metricname=$( /bin/jq --argjson cnt "$cnt" '.[$cnt] | .metricname' < ${INFORMIX_EXPORTER_PATH}/metrics.json 2> /dev/null | tr -d \" )
+		help=$( /bin/jq --argjson cnt "$cnt" '.[$cnt] | .help' < ${INFORMIX_EXPORTER_PATH}/metrics.json 2> /dev/null | tr -d \" )
+		type=$( /bin/jq --argjson cnt "$cnt" '.[$cnt] | .type' < ${INFORMIX_EXPORTER_PATH}/metrics.json 2> /dev/null | tr -d \" )
+		database=$( /bin/jq --argjson cnt "$cnt" '.[$cnt] | .database' < ${INFORMIX_EXPORTER_PATH}/metrics.json 2> /dev/null | tr -d \" )
+		sql=$( /bin/jq --argjson cnt "$cnt" '.[$cnt] | .sql' < ${INFORMIX_EXPORTER_PATH}/metrics.json 2> /dev/null | tr -d \" )
 
 		echo "# HELP $metricname $help" >> "/tmp/informix-text-exporter.$frq.$$"
 		echo "# TYPE $metricname $type" >> "/tmp/informix-text-exporter.$frq.$$"
@@ -83,7 +85,7 @@ do
 			then
 			        if [ $subsel -ne 0 ]
 				then
-					commas=$( echo "$sql" | while read -r x; do echo "$x" | grep -o "," | wc -l; done )
+					commas=$( /bin/echo "$sql" | while read -r x; do /bin/echo "$x" | /bin/grep -o "," | /bin/wc -l; done )
 					if [ $(( commas % 2 )) -ne 0 ]
 					then
 						echo "WARNING: label without value or vice-versa"
@@ -97,7 +99,7 @@ do
 		sql=$origsql
 
 		${INFORMIXDIR}/bin/dbaccess "$database" <<! 2> /dev/null | grep -v "^$"
-UNLOAD TO /tmp/informix-text-exporter.tmp.$frq.$$
+UNLOAD TO /tmp/informix-text-exporter.tmp.$frq.$$ DELIMITER '|'
 $sql
 !
 		# if [ $( wc -l /tmp/informix-text-exporter.tmp.$frq.$$ | awk '{print $1}'  ) -eq 0 ]
@@ -110,19 +112,19 @@ $sql
 			cnt=$(( cnt + 1 ))
 			continue
 		fi
-		sed -i -e "s/|$//" "/tmp/informix-text-exporter.tmp.$frq.$$"
+		/bin/sed -i -e "s/|$//" "/tmp/informix-text-exporter.tmp.$frq.$$"
 		if [ "$commas" -ne 0 ]
 		then
-			sed -i -e "s/|/\"} /$commas" "/tmp/informix-text-exporter.tmp.$frq.$$"
+			/bin/sed -i -e "s/|/\"} /$commas" "/tmp/informix-text-exporter.tmp.$frq.$$"
 		fi
 		pipecnt=$( head -1 "/tmp/informix-text-exporter.tmp.$frq.$$" | grep -o "|" | wc -l | awk '{print $1}' )
 		for ((k=1;k<=pipecnt;k++))
 		do
 			if [ $(( k % 2 )) -eq 1 ]
 			then
-				sed -i -e "s/|/=/" "/tmp/informix-text-exporter.tmp.$frq.$$"
+				/bin/sed -i -e "s/|/=/" "/tmp/informix-text-exporter.tmp.$frq.$$"
 			else
-				sed -i -e "s/|/,/" "/tmp/informix-text-exporter.tmp.$frq.$$"
+				/bin/sed -i -e "s/|/,/" "/tmp/informix-text-exporter.tmp.$frq.$$"
 			fi
 		done
 
@@ -132,9 +134,9 @@ $sql
 			then
 				if [ "$commas" -eq 0 ]
 				then
-					sed -i -e "s/^/$metricname{$statics\"} /" "/tmp/informix-text-exporter.tmp.$frq.$$"
+					/bin/sed -i -e "s/^/$metricname{$statics\"} /" "/tmp/informix-text-exporter.tmp.$frq.$$"
 				else
-					sed -i -e "s/^/$metricname{$statics,/" "/tmp/informix-text-exporter.tmp.$frq.$$"
+					/bin/sed -i -e "s/^/$metricname{$statics,/" "/tmp/informix-text-exporter.tmp.$frq.$$"
 				fi
 			fi
 		fi
@@ -144,8 +146,8 @@ $sql
 	cnt=$(( cnt + 1 ))
 done
 
-sed -i -e 's/} ="/"} /' "/tmp/informix-text-exporter.$frq.$$"
-sed -i -e 's/,}=/"} /' "/tmp/informix-text-exporter.$frq.$$"
+/bin/sed -i -e 's/} ="/"} /' "/tmp/informix-text-exporter.$frq.$$"
+/bin/sed -i -e 's/,}=/"} /' "/tmp/informix-text-exporter.$frq.$$"
 
 echo "# HELP informix_exporter_duration How long the Informix exporter takes to run in seconds" >> "/tmp/informix-text-exporter.$frq.$$"
 echo "# TYPE informix_exporter_duration gauge" >> "/tmp/informix-text-exporter.$frq.$$"
@@ -154,16 +156,18 @@ endtime=$( date +%s )
 dur=$(( endtime - starttime ))
 
 echo "informix_exporter_duration{$statics,frequency=$frq\"} $dur" >> "/tmp/informix-text-exporter.$frq.$$"
-sed -i -e 's/,/",/g' "/tmp/informix-text-exporter.$frq.$$"
-sed -i -e 's/=/="/g' "/tmp/informix-text-exporter.$frq.$$"
+/bin/sed -i -e 's/,/",/g' "/tmp/informix-text-exporter.$frq.$$"
+/bin/sed -i -e 's/=/="/g' "/tmp/informix-text-exporter.$frq.$$"
 
-#if promtool check metrics < "/tmp/informix-text-exporter.$frq.$$" > /tmp/metrics.lint.err 2>&1
-#then
-#	:
-#else
-#	echo "Prometheus linting error(s). Check /tmp/metrics.lint.err for details"
-#fi	
+if promtool check metrics < "/tmp/informix-text-exporter.$frq.$$" > /tmp/metrics.lint.err 2>&1
+then
+	:
+else
+	echo "Prometheus linting error(s). Check /tmp/metrics.lint.err for details"
+fi	
 
 mv "/tmp/informix-text-exporter.$frq.$$" "$textfile_path/informix-text-exporter.$frq.prom"
-rm ".${instance}.${frq}.lock" 2> /dev/null
+#rm ".${instance}.${frq}.lock" 2> /dev/null
+#set -x
+rm ".${instance}.${frq}.lock"
 exit 0
